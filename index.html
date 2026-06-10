@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Ya llegas</title>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+
+<style>
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+}
+
+#map {
+    height: 100vh;
+    width: 100vw;
+}
+
+.panel {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    z-index: 1000;
+    background: white;
+    padding: 12px;
+    border-radius: 10px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+}
+</style>
+</head>
+
+<body>
+
+<div class="panel">
+    <label>Distancia alerta:</label>
+    <select id="threshold">
+        <option value="10">10 m</option>
+        <option value="20">20 m</option>
+        <option value="50">50 m</option>
+        <option value="100" selected>100 m</option>
+        <option value="200">200 m</option>
+        <option value="500">500 m</option>
+        <option value="1000">1 km</option>
+        <option value="2000">2 km</option>
+        <option value="5000">5 km</option>
+    </select>
+
+    <div id="distance">Esperando GPS...</div>
+</div>
+
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+<script>
+
+let map;
+let userMarker;
+let userCircle;
+let destination;
+let destinationMarker;
+let alarmTriggered = false;
+
+// 1. 🔥 IMPORTANTE: inicializar con vista válida
+map = L.map('map').setView([40.0, -3.7], 6); // fallback España
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap'
+}).addTo(map);
+
+// arregla problemas de render en algunos navegadores
+setTimeout(() => {
+    map.invalidateSize();
+}, 300);
+
+// distancia Haversine
+function haversine(lat1, lon1, lat2, lon2) {
+    const R = 6371000;
+    const toRad = d => d * Math.PI / 180;
+
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+
+    const a =
+        Math.sin(dLat/2)**2 +
+        Math.cos(toRad(lat1)) *
+        Math.cos(toRad(lat2)) *
+        Math.sin(dLon/2)**2;
+
+    return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+// click destino
+map.on("click", e => {
+    destination = e.latlng;
+    alarmTriggered = false;
+
+    if (destinationMarker) {
+        map.removeLayer(destinationMarker);
+    }
+
+    destinationMarker = L.marker(destination)
+        .addTo(map)
+        .bindPopup("Destino")
+        .openPopup();
+});
+
+// GPS
+if (navigator.geolocation) {
+
+    navigator.geolocation.watchPosition(
+    pos => {
+
+        const lat = pos.coords.latitude;
+        const lon = pos.coords.longitude;
+
+        const threshold = Number(
+            document.getElementById("threshold").value
+        );
+
+        if (!userMarker) {
+            userMarker = L.marker([lat, lon])
+                .addTo(map)
+                .bindPopup("Tu ubicación");
+
+            userCircle = L.circle([lat, lon], {
+                radius: threshold,
+                color: 'red',
+                fillColor: 'red',
+                fillOpacity: 0.2
+            }).addTo(map);
+
+            map.setView([lat, lon], 16);
+        } else {
+            userMarker.setLatLng([lat, lon]);
+            userCircle.setLatLng([lat, lon]);
+            userCircle.setRadius(threshold);
+        }
+
+        if (destination) {
+
+            const distance = haversine(
+                lat, lon,
+                destination.lat,
+                destination.lng
+            );
+
+            document.getElementById("distance").innerText =
+                `Distancia: ${Math.round(distance)} m`;
+
+            if (distance <= threshold && !alarmTriggered) {
+                alarmTriggered = true;
+                alert("🚨 Cerca del destino");
+            }
+        }
+
+    },
+    err => {
+        alert("Error GPS: " + err.message);
+    },
+    {
+        enableHighAccuracy: true
+    });
+
+} else {
+    alert("Geolocalización no soportada");
+}
+
+</script>
+
+</body>
+</html>
